@@ -1,5 +1,6 @@
 // Import Mapbox and D3 as ES modules
 import mapboxgl from 'https://cdn.jsdelivr.net/npm/mapbox-gl@2.15.0/+esm';
+import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm';
 
 // Public Mapbox token (pk.*): safe to ship in client code
 mapboxgl.accessToken = 'pk.eyJ1IjoibXVoYXllcmkiLCJhIjoiY213YmVqMzUzMDBzczJ4cG53bTdhcG9udSJ9.d6rxsqoNMbiEWKAwerPgtA';
@@ -14,6 +15,9 @@ const map = new mapboxgl.Map({
   maxZoom: 18,
 });
 
+const STATIONS_URL =
+  'https://dsc106.com/labs/lab07/data/bluebikes-stations.json';
+
 const BOSTON_LANES_URL =
   'https://bostonopendata-boston.opendata.arcgis.com/datasets/boston::existing-bike-network-2022.geojson';
 const CAMBRIDGE_LANES_URL =
@@ -26,7 +30,15 @@ const bikeLaneStyle = {
   'line-opacity': 0.5,
 };
 
+// Convert a station's lon/lat to pixel coordinates on the current map view
+function getCoords(station) {
+  const point = new mapboxgl.LngLat(+station.lon, +station.lat);
+  const { x, y } = map.project(point);
+  return { cx: x, cy: y };
+}
+
 map.on('load', async () => {
+  // Step 2: bike lanes
   map.addSource('boston_route', { type: 'geojson', data: BOSTON_LANES_URL });
   map.addLayer({
     id: 'boston-bike-lanes',
@@ -45,4 +57,41 @@ map.on('load', async () => {
     source: 'cambridge_route',
     paint: bikeLaneStyle,
   });
+
+  // Step 3: stations as SVG circles on top of the map
+  let jsonData;
+  try {
+    jsonData = await d3.json(STATIONS_URL);
+    console.log('Loaded JSON Data:', jsonData);
+  } catch (error) {
+    console.error('Error loading JSON:', error);
+    return;
+  }
+  const stations = jsonData.data.stations;
+  console.log('Stations Array:', stations);
+
+  const svg = d3.select('#map').select('svg');
+
+  const circles = svg
+    .selectAll('circle')
+    .data(stations)
+    .enter()
+    .append('circle')
+    .attr('r', 5)
+    .attr('fill', 'steelblue')
+    .attr('stroke', 'white')
+    .attr('stroke-width', 1)
+    .attr('opacity', 0.8);
+
+  function updatePositions() {
+    circles
+      .attr('cx', (d) => getCoords(d).cx)
+      .attr('cy', (d) => getCoords(d).cy);
+  }
+
+  updatePositions();
+  map.on('move', updatePositions);
+  map.on('zoom', updatePositions);
+  map.on('resize', updatePositions);
+  map.on('moveend', updatePositions);
 });
