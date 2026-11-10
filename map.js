@@ -89,13 +89,14 @@ function computeStationTraffic(stations, timeFilter = -1) {
   });
 }
 
-// Share of traffic that is departures; a station with no trips reads as balanced
+// Share of traffic that is departures; stations with no trips get 0.5 only to
+// avoid NaN (they are drawn with radius 0, so the color is never seen)
 function departureRatio(d) {
   return d.totalTraffic === 0 ? 0.5 : d.departures / d.totalTraffic;
 }
 
 function tooltipText(d) {
-  return `${d.totalTraffic} trips (${d.departures} departures, ${d.arrivals} arrivals)`;
+  return `${d.name}: ${d.totalTraffic} trips (${d.departures} departures, ${d.arrivals} arrivals)`;
 }
 
 map.on('load', async () => {
@@ -132,14 +133,23 @@ map.on('load', async () => {
   console.log('Stations Array:', rawStations);
 
   // Step 4 / 5.3 / 5.4: trips, parsed and bucketed by minute as they load
-  const trips = await d3.csv(TRIPS_URL, (trip) => {
-    trip.started_at = new Date(trip.started_at);
-    trip.ended_at = new Date(trip.ended_at);
-    departuresByMinute[minutesSinceMidnight(trip.started_at)].push(trip);
-    arrivalsByMinute[minutesSinceMidnight(trip.ended_at)].push(trip);
-    return trip;
-  });
-  console.log('Loaded trips:', trips.length);
+  try {
+    const trips = await d3.csv(TRIPS_URL, (trip) => {
+      // 'T' separator parses reliably in every browser
+      trip.started_at = new Date(trip.started_at.replace(' ', 'T'));
+      trip.ended_at = new Date(trip.ended_at.replace(' ', 'T'));
+      const startMin = minutesSinceMidnight(trip.started_at);
+      const endMin = minutesSinceMidnight(trip.ended_at);
+      // Skip bucketing rows with an unparseable time instead of crashing
+      if (!Number.isNaN(startMin)) departuresByMinute[startMin].push(trip);
+      if (!Number.isNaN(endMin)) arrivalsByMinute[endMin].push(trip);
+      return trip;
+    });
+    console.log('Loaded trips:', trips.length);
+  } catch (error) {
+    console.error('Error loading trips:', error);
+    return;
+  }
 
   const stations = computeStationTraffic(rawStations);
 
@@ -148,6 +158,8 @@ map.on('load', async () => {
     .domain([0, d3.max(stations, (d) => d.totalTraffic)])
     .range([0, 25]);
 
+  // Stations with no trips in the window are not drawn (no data, not "balanced")
+  const radius = (d) => (d.totalTraffic === 0 ? 0 : radiusScale(d.totalTraffic));
 
   // 0 -> mostly arrivals, 0.5 -> balanced, 1 -> mostly departures
   const stationFlow = d3.scaleQuantize().domain([0, 1]).range([0, 0.5, 1]);
@@ -158,16 +170,18 @@ map.on('load', async () => {
     .selectAll('circle')
     .data(stations, (d) => d.short_name)
     .join('circle')
-    .attr('r', (d) => radiusScale(d.totalTraffic))
+    .attr('r', radius)
     .style('--departure-ratio', (d) => stationFlow(departureRatio(d)))
     .each(function (d) {
       d3.select(this).append('title').text(tooltipText(d));
     });
 
   function updatePositions() {
-    circles
-      .attr('cx', (d) => getCoords(d).cx)
-      .attr('cy', (d) => getCoords(d).cy);
+    circles.each(function (d) {
+      const { cx, cy } = getCoords(d); // project once per circle
+      this.setAttribute('cx', cx);
+      this.setAttribute('cy', cy);
+    });
   }
 
   updatePositions();
@@ -191,11 +205,13 @@ map.on('load', async () => {
 
     circles
       .data(filteredStations, (d) => d.short_name)
-      .attr('r', (d) => radiusScale(d.totalTraffic))
+      .attr('r', radius)
       .style('--departure-ratio', (d) => stationFlow(departureRatio(d)))
       .each(function (d) {
         d3.select(this).select('title').text(tooltipText(d));
-      });
+      })
+      // Draw big circles first so small ones stay on top and hoverable
+      .sort((a, b) => b.totalTraffic - a.totalTraffic);
   }
 
   function updateTimeDisplay() {

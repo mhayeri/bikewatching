@@ -38,7 +38,8 @@
 
 .legend {
   display: flex;
-  gap: 1.5em;
+  gap: 0.5em 1.5em;
+  flex-wrap: wrap;
   align-items: center;
   margin-block: 1em;
 }
