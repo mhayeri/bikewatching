@@ -15,6 +15,8 @@ const map = new mapboxgl.Map({
   maxZoom: 18,
 });
 
+const TRIPS_URL =
+  'https://dsc106.com/labs/lab07/data/bluebikes-traffic-2024-03.csv';
 const STATIONS_URL =
   'https://dsc106.com/labs/lab07/data/bluebikes-stations.json';
 
@@ -29,6 +31,25 @@ const bikeLaneStyle = {
   'line-width': 3,
   'line-opacity': 0.5,
 };
+
+function computeStationTraffic(stations, trips) {
+  const departures = d3.rollup(
+    trips,
+    (v) => v.length,
+    (d) => d.start_station_id,
+  );
+  const arrivals = d3.rollup(
+    trips,
+    (v) => v.length,
+    (d) => d.end_station_id,
+  );
+  return stations.map((station) => {
+    const id = station.short_name;
+    const a = arrivals.get(id) ?? 0;
+    const dep = departures.get(id) ?? 0;
+    return { ...station, arrivals: a, departures: dep, totalTraffic: a + dep };
+  });
+}
 
 // Convert a station's lon/lat to pixel coordinates on the current map view
 function getCoords(station) {
@@ -67,21 +88,32 @@ map.on('load', async () => {
     console.error('Error loading JSON:', error);
     return;
   }
-  const stations = jsonData.data.stations;
-  console.log('Stations Array:', stations);
+  const trips = await d3.csv(TRIPS_URL);
+  console.log('Loaded trips:', trips.length);
+
+  const stations = computeStationTraffic(jsonData.data.stations, trips);
+  console.log('Stations with traffic:', stations);
+
+  // Square root scale: circle AREA, not radius, encodes traffic
+  const radiusScale = d3
+    .scaleSqrt()
+    .domain([0, d3.max(stations, (d) => d.totalTraffic)])
+    .range([0, 25]);
 
   const svg = d3.select('#map').select('svg');
 
   const circles = svg
     .selectAll('circle')
-    .data(stations)
-    .enter()
-    .append('circle')
-    .attr('r', 5)
-    .attr('fill', 'steelblue')
-    .attr('stroke', 'white')
-    .attr('stroke-width', 1)
-    .attr('opacity', 0.8);
+    .data(stations, (d) => d.short_name)
+    .join('circle')
+    .attr('r', (d) => radiusScale(d.totalTraffic))
+    .each(function (d) {
+      d3.select(this)
+        .append('title')
+        .text(
+          `${d.totalTraffic} trips (${d.departures} departures, ${d.arrivals} arrivals)`,
+        );
+    });
 
   function updatePositions() {
     circles
