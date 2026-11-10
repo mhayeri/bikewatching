@@ -89,6 +89,11 @@ function computeStationTraffic(stations, timeFilter = -1) {
   });
 }
 
+// Share of traffic that is departures; a station with no trips reads as balanced
+function departureRatio(d) {
+  return d.totalTraffic === 0 ? 0.5 : d.departures / d.totalTraffic;
+}
+
 function tooltipText(d) {
   return `${d.totalTraffic} trips (${d.departures} departures, ${d.arrivals} arrivals)`;
 }
@@ -144,6 +149,9 @@ map.on('load', async () => {
     .range([0, 25]);
 
 
+  // 0 -> mostly arrivals, 0.5 -> balanced, 1 -> mostly departures
+  const stationFlow = d3.scaleQuantize().domain([0, 1]).range([0, 0.5, 1]);
+
   const svg = d3.select('#map').select('svg');
 
   const circles = svg
@@ -151,6 +159,7 @@ map.on('load', async () => {
     .data(stations, (d) => d.short_name)
     .join('circle')
     .attr('r', (d) => radiusScale(d.totalTraffic))
+    .style('--departure-ratio', (d) => stationFlow(departureRatio(d)))
     .each(function (d) {
       d3.select(this).append('title').text(tooltipText(d));
     });
@@ -183,7 +192,8 @@ map.on('load', async () => {
     circles
       .data(filteredStations, (d) => d.short_name)
       .attr('r', (d) => radiusScale(d.totalTraffic))
-        .each(function (d) {
+      .style('--departure-ratio', (d) => stationFlow(departureRatio(d)))
+      .each(function (d) {
         d3.select(this).select('title').text(tooltipText(d));
       });
   }

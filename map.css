@@ -16,10 +16,48 @@
   pointer-events: none;
 }
 
+/* Traffic flow colors, shared by the circles and the legend */
+#map circle,
+.legend > div {
+  --color-departures: steelblue;
+  --color-arrivals: darkorange;
+  --color: color-mix(
+    in oklch,
+    var(--color-departures) calc(100% * var(--departure-ratio)),
+    var(--color-arrivals)
+  );
+}
+
 #map circle {
-  fill: steelblue;
+  fill: var(--color);
   fill-opacity: 60%;
   stroke: white;
   stroke-width: 1;
   pointer-events: auto;
+}
+
+.legend {
+  display: flex;
+  gap: 1.5em;
+  align-items: center;
+  margin-block: 1em;
+}
+
+.legend-label {
+  font-weight: bold;
+  color: #555;
+}
+
+.legend > div {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+}
+
+.legend > div::before {
+  content: '';
+  width: 1em;
+  height: 1em;
+  border-radius: 50%;
+  background: var(--color);
 }
