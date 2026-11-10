@@ -8,3 +8,27 @@ body {
   margin: auto;
   padding: 1em;
 }
+
+header {
+  display: flex;
+  gap: 1em;
+  align-items: baseline;
+}
+
+header h1 {
+  margin: 0;
+}
+
+header label {
+  margin-left: auto;
+}
+
+header time,
+header em {
+  display: block;
+}
+
+header em {
+  color: #777;
+  font-style: italic;
+}
